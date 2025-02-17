@@ -3,19 +3,6 @@ import json
 from datetime import datetime
 import os
 from mitmproxy import exceptions
-import logging
-
-class QuietFilter(logging.Filter):
-    def __init__(self):
-        self.filtered_strings = [
-            "Client TLS handshake failed",
-            "infura.io",
-            "client disconnect",
-            "server disconnect"
-        ]
-
-    def filter(self, record):
-        return not any(s in record.getMessage() for s in self.filtered_strings)
 
 class LayeredgeLogger:
     def __init__(self):
@@ -30,8 +17,9 @@ class LayeredgeLogger:
             'opensea.io'
         ]
         
-        # 设置日志过滤
-        ctx.log.addFilter(QuietFilter())
+        # 静默所有默认日志
+        ctx.options.termlog_verbosity = 'error'
+        ctx.options.flow_detail = 0
 
     def load(self, loader):
         loader.add_option(
@@ -44,6 +32,9 @@ class LayeredgeLogger:
     def running(self):
         ctx.options.ssl_insecure = True
         ctx.options.upstream_cert = False
+        # 设置最低日志级别
+        ctx.options.termlog_verbosity = 'error'
+        ctx.options.flow_detail = 0
 
     def clientconnect(self, layer):
         # 静默处理客户端连接
@@ -70,10 +61,10 @@ class LayeredgeLogger:
                     'headers': dict(flow.request.headers),
                     'content': flow.request.content.decode('utf-8', 'ignore') if flow.request.content else None
                 }
-                ctx.log.info(f"捕获请求: {flow.request.method} {flow.request.pretty_url}")
+                print(f"捕获请求: {flow.request.method} {flow.request.pretty_url}")
                 self.requests.append({'request': req_data})
             except Exception as e:
-                ctx.log.error(f"处理请求时出错: {str(e)}")
+                print(f"处理请求时出错: {str(e)}")
 
     def response(self, flow):
         # 检查域名是否需要忽略
@@ -93,12 +84,12 @@ class LayeredgeLogger:
                         }
                         req['response'] = resp_data
                         self._save_to_file()
-                        ctx.log.info(f"记录响应: {flow.request.method} {flow.request.pretty_url} - {flow.response.status_code}")
+                        print(f"记录响应: {flow.request.method} {flow.request.pretty_url} - {flow.response.status_code}")
             except Exception as e:
-                ctx.log.error(f"处理响应时出错: {str(e)}")
+                print(f"处理响应时出错: {str(e)}")
 
     def error(self, flow):
-        # 忽略所有错误日志
+        # 忽略所有错误
         pass
 
     def _save_to_file(self):
