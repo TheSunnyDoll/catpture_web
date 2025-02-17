@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 import os
 from mitmproxy import exceptions
+import os
 
 class LayeredgeLogger:
     def __init__(self):
@@ -16,6 +17,10 @@ class LayeredgeLogger:
             'etherscan.io',
             'opensea.io'
         ]
+        
+        # 设置环境变量代理
+        os.environ['HTTP_PROXY'] = 'http://192.168.0.12:7890'
+        os.environ['HTTPS_PROXY'] = 'http://192.168.0.12:7890'
         
         # 静默所有默认日志
         ctx.options.termlog_verbosity = 'error'
@@ -32,7 +37,6 @@ class LayeredgeLogger:
     def running(self):
         ctx.options.ssl_insecure = True
         ctx.options.upstream_cert = False
-        # 设置最低日志级别
         ctx.options.termlog_verbosity = 'error'
         ctx.options.flow_detail = 0
 
