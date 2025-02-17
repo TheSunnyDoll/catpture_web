@@ -1,4 +1,4 @@
-from mitmproxy import ctx
+from mitmproxy import ctx, options
 import json
 from datetime import datetime
 import os
@@ -10,7 +10,23 @@ class LayeredgeLogger:
         self.log_file = os.path.join(self.log_dir, f'layeredge_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
         self.requests = []
 
+    def load(self, loader):
+        loader.add_option(
+            name = "ssl_insecure",
+            typespec = bool,
+            default = True,
+            help = "忽略SSL证书验证",
+        )
+
+    def running(self):
+        # 设置为不验证证书
+        ctx.options.ssl_insecure = True
+        ctx.options.upstream_cert = False
+
     def request(self, flow):
+        # 忽略证书验证
+        flow.request.verify = False
+        
         # 只记录 layeredge.io 相关的请求
         if 'layeredge.io' in flow.request.pretty_host:
             req_data = {
