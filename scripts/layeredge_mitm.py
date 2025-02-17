@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 import os
 from mitmproxy import exceptions
-import os
+from mitmproxy.utils import strutils
 
 class LayeredgeLogger:
     def __init__(self):
@@ -40,6 +40,26 @@ class LayeredgeLogger:
         ctx.options.termlog_verbosity = 'error'
         ctx.options.flow_detail = 0
 
+    def websocket_message(self, flow):
+        """处理 WebSocket 消息"""
+        if not flow.websocket:
+            return
+        
+        # 只处理 layeredge.io 相关的消息
+        if 'layeredge.io' in flow.request.pretty_host:
+            try:
+                for msg in flow.websocket.messages:
+                    message_data = {
+                        'timestamp': datetime.now().isoformat(),
+                        'from_client': msg.from_client,
+                        'content': msg.content.decode('utf-8', 'ignore') if isinstance(msg.content, bytes) else str(msg.content)
+                    }
+                    print(f"WebSocket {'发送' if msg.from_client else '接收'}: {message_data['content'][:100]}...")
+                    self.requests.append({'websocket': message_data})
+                    self._save_to_file()
+            except Exception as e:
+                print(f"处理WebSocket消息时出错: {str(e)}")
+
     def clientconnect(self, layer):
         # 静默处理客户端连接
         pass
@@ -58,6 +78,11 @@ class LayeredgeLogger:
         # 只记录 layeredge.io 相关的请求
         if 'layeredge.io' in host:
             try:
+                # 检查是否是 WebSocket 升级请求
+                if flow.request.headers.get('Upgrade', '').lower() == 'websocket':
+                    print(f"检测到 WebSocket 连接请求: {flow.request.pretty_url}")
+                    return
+
                 req_data = {
                     'timestamp': datetime.now().isoformat(),
                     'method': flow.request.method,
@@ -79,8 +104,13 @@ class LayeredgeLogger:
         # 只处理 layeredge.io 相关的响应
         if 'layeredge.io' in host:
             try:
+                # 检查是否是 WebSocket 升级响应
+                if flow.response.headers.get('Upgrade', '').lower() == 'websocket':
+                    print(f"WebSocket 连接已建立: {flow.request.pretty_url}")
+                    return
+
                 for req in self.requests:
-                    if req['request']['url'] == flow.request.pretty_url:
+                    if req.get('request', {}).get('url') == flow.request.pretty_url:
                         resp_data = {
                             'status_code': flow.response.status_code,
                             'headers': dict(flow.response.headers),
