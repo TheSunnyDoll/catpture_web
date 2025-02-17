@@ -3,6 +3,19 @@ import json
 from datetime import datetime
 import os
 from mitmproxy import exceptions
+import logging
+
+class QuietFilter(logging.Filter):
+    def __init__(self):
+        self.filtered_strings = [
+            "Client TLS handshake failed",
+            "infura.io",
+            "client disconnect",
+            "server disconnect"
+        ]
+
+    def filter(self, record):
+        return not any(s in record.getMessage() for s in self.filtered_strings)
 
 class LayeredgeLogger:
     def __init__(self):
@@ -10,8 +23,15 @@ class LayeredgeLogger:
         os.makedirs(self.log_dir, exist_ok=True)
         self.log_file = os.path.join(self.log_dir, f'layeredge_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
         self.requests = []
-        # 不需要记录的域名
-        self.ignore_domains = ['infura.io', 'ethereum.org']
+        self.ignore_domains = [
+            'infura.io', 
+            'ethereum.org',
+            'etherscan.io',
+            'opensea.io'
+        ]
+        
+        # 设置日志过滤
+        ctx.log.addFilter(QuietFilter())
 
     def load(self, loader):
         loader.add_option(
@@ -25,11 +45,18 @@ class LayeredgeLogger:
         ctx.options.ssl_insecure = True
         ctx.options.upstream_cert = False
 
+    def clientconnect(self, layer):
+        # 静默处理客户端连接
+        pass
+
+    def serverconnect(self, layer):
+        # 静默处理服务器连接
+        pass
+
     def request(self, flow):
         # 检查域名是否需要忽略
         host = flow.request.pretty_host
         if any(domain in host for domain in self.ignore_domains):
-            # 对于需要忽略的域名，直接放行请求
             flow.request.verify = False
             return
 
@@ -65,17 +92,14 @@ class LayeredgeLogger:
                             'content': flow.response.content.decode('utf-8', 'ignore') if flow.response.content else None
                         }
                         req['response'] = resp_data
-                        # 保存到文件
                         self._save_to_file()
                         ctx.log.info(f"记录响应: {flow.request.method} {flow.request.pretty_url} - {flow.response.status_code}")
             except Exception as e:
                 ctx.log.error(f"处理响应时出错: {str(e)}")
 
     def error(self, flow):
-        # 忽略特定域名的证书错误
-        if any(domain in flow.request.pretty_host for domain in self.ignore_domains):
-            return
-        ctx.log.warn(f"请求错误: {flow.error}")
+        # 忽略所有错误日志
+        pass
 
     def _save_to_file(self):
         with open(self.log_file, 'w', encoding='utf-8') as f:
