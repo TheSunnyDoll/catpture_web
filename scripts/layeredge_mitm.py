@@ -10,42 +10,21 @@ class LayeredgeLogger:
         self.log_file = os.path.join(self.log_dir, f'layeredge_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
         self.requests = []
         
-        # 需要直接访问的域名
-        self.direct_domains = [
+        # 需要放行的域名
+        self.bypass_domains = [
             'google.com',
             'gstatic.com',
             'recaptcha.net',
-            'googleapis.com'
+            'googleapis.com',
+            'google-analytics.com'
         ]
-
-    def load(self, loader):
-        loader.add_option(
-            name = "ssl_insecure",
-            typespec = bool,
-            default = True,
-            help = "忽略SSL证书验证",
-        )
-
-    def running(self):
-        ctx.options.ssl_insecure = True
-        ctx.options.upstream_cert = False
 
     def request(self, flow):
         host = flow.request.pretty_host
         
-        # 对于 Google 服务相关域名，直接放行
-        if any(domain in host for domain in self.direct_domains):
-            # 添加必要的 CORS 头
-            if 'Origin' in flow.request.headers:
-                flow.request.headers["Access-Control-Allow-Origin"] = "*"
-                flow.request.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-                flow.request.headers["Access-Control-Allow-Headers"] = "*"
-            return
-
-        # 处理预加载资源
-        if flow.request.pretty_url.endswith(('.woff2', '.js', '.css')):
-            # 添加缓存控制头
-            flow.request.headers["Cache-Control"] = "no-cache"
+        # 完全放行 Google 相关域名
+        if any(domain in host for domain in self.bypass_domains):
+            flow.kill()  # 直接放行，不做任何处理
             return
 
         # 只记录 layeredge.io 相关的请求
@@ -69,23 +48,7 @@ class LayeredgeLogger:
                 print(f"Error: {str(e)}")
 
     def response(self, flow):
-        host = flow.request.pretty_host
-
-        # 处理 Google reCAPTCHA 响应
-        if any(domain in host for domain in self.direct_domains):
-            flow.response.headers["Access-Control-Allow-Origin"] = "*"
-            flow.response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-            flow.response.headers["Access-Control-Allow-Headers"] = "*"
-            return
-
-        # 处理资源文件响应
-        if flow.request.pretty_url.endswith(('.woff2', '.js', '.css')):
-            flow.response.headers["Cache-Control"] = "public, max-age=31536000"
-            flow.response.headers["Access-Control-Allow-Origin"] = "*"
-            return
-
-        # 只处理 layeredge.io 相关的响应
-        if 'layeredge.io' in host:
+        if 'layeredge.io' in flow.request.pretty_host:
             try:
                 # 跳过资源文件的记录
                 if flow.request.pretty_url.endswith(('.woff2', '.js', '.css', '.png', '.jpg', '.gif')):
